@@ -47,7 +47,7 @@ sleep <- sleep %>%
   separate(duration_sleep, c("hours", "unit1", "minutes", "unit2" ), sep = " ", remove = TRUE, convert = TRUE) %>% 
   mutate(minutes = ifelse(is.na(minutes), 00, minutes),
          total_sleep = hours + (minutes / 60)) %>% 
-  select(-c(unit1, unit2, hours, minutes))
+  select(-c(unit1, unit2, hours, minutes))  # ignore the error
 
 # to gain insight into the differences in sleep times across different perceptions of the day
 sleep %>% 
@@ -107,7 +107,9 @@ perm_differences <- purrr::map2(upper, lower, perms, x = sleep$total_sleep, rep 
 
 # function to calculate observed differences
 calc_obs_diffs <- function(df, comb1, comb2) {
-  get_diff(df[["total_sleep"]][df[["perception_day_general"]] == comb1], df[["total_sleep"]][df[["perception_day_general"]] == comb2], rule = mean)
+  get_diff(df[["total_sleep"]][df[["perception_day_general"]] == comb1],
+           df[["total_sleep"]][df[["perception_day_general"]] == comb2], 
+           rule = mean)
 }
 
 # vectors to store all possible combinations
@@ -115,42 +117,34 @@ combinations_upper <- c(2, 2, 2, 3, 3, 4)
 combinations_lower <- c(3, 4, 5, 4, 5, 5)
 
 # computing observed differences
-observed_diffs <- purrr::map2_dbl(combinations_upper, combinations_lower, calc_obs_diffs, df = sleep)
+observed_diffs <- purrr::map2_dbl(combinations_upper, combinations_lower,
+                                  calc_obs_diffs, df = sleep)
 
 # naming observed differences vector. number1_number2 indicates that the value is the observed difference in sleep times between 
 # perception == number1 and perception == number2.
-names(observed_diffs) <- c("two_three", "two_four", "two_five", "three_four", "three_five", "four_five")
+names(observed_diffs) <- c("two_three", "two_four", "two_five", "three_four",
+                           "three_five", "four_five")
 
 # Getting the outputs --------------------------------------------------------------------------------------------------------------------
 
-# [If you want a function that can do what I've written, check the other analysis file]
-
 # converting perms_differences to a data.frame
-perm_differences <- as.data.frame(perm_differences)
-
+ perm_differences <- as.data.frame(perm_differences)
+ 
 # changing names of perm_differences
 names(perm_differences) <- names(observed_diffs)
 
-# two and three
-ggplot(perm_differences) + aes(two_three) + geom_histogram(binwidth = 0.1) + geom_vline(xintercept = observed_diffs[[1]]) + 
-  ggtitle("Plot of permuted differences", subtitle = "2 and 3") + theme_fivethirtyeight()
+# function to plot histogram of permuted difference data
+get_plots <- function(x, obs_diffs, x_labs) {
+  ggplot(as.data.frame(perm_differences)) + aes(x) + 
+    geom_histogram(binwidth = 0.1) + geom_vline(xintercept = obs_diffs)  + 
+    xlab(x_labs) + ggtitle("Perception of day: Permuted differences", subtitle = x_labs) + theme_economist_white()
+}
 
-# two and four
-ggplot(perm_differences) + aes(two_four) + geom_histogram(binwidth = 0.1) + geom_vline(xintercept = observed_diffs[[2]]) + 
-  ggtitle("Plot of permuted differences", subtitle = "2 and 4") + theme_fivethirtyeight()
+# vector to store subtitles and x axis names
+x_labs <- c("two and three", "two and four", "two and five", "three and four",
+            "three and five", "four and five")
 
-# two and five
-ggplot(perm_differences) + aes(two_five) + geom_histogram(binwidth = 0.1) + geom_vline(xintercept = observed_diffs[[3]]) + 
-  ggtitle("Plot of permuted differences", subtitle = "2 and 5") + theme_fivethirtyeight()
-
-# three and four
-ggplot(perm_differences) + aes(three_four) + geom_histogram(binwidth = 0.1) + geom_vline(xintercept = observed_diffs[[4]]) + 
-  ggtitle("Plot of permuted differences", subtitle = "3 and 4") + theme_fivethirtyeight()
-
-# three and five
-ggplot(perm_differences) + aes(three_five) + geom_histogram(binwidth = 0.1) + geom_vline(xintercept = observed_diffs[[5]]) + 
-  ggtitle("Plot of permuted differences", subtitle = "3 and 5") + theme_fivethirtyeight()
-
-# four and five
-ggplot(perm_differences) + aes(four_five) + geom_histogram(binwidth = 0.1) + geom_vline(xintercept = observed_diffs[[1]]) + 
-  ggtitle("Plot of permuted differences", subtitle = "4 and 5") + theme_fivethirtyeight()
+# storing the plots in a list for easy access
+plt_list <- purrr::pmap(list(as.data.frame(perm_differences), 
+                             obs_diffs = observed_diffs, x_labs = x_labs), 
+                        get_plots)
