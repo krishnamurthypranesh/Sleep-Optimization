@@ -8,7 +8,6 @@ So, here's the thing. This data was collected [by me] with the purpose of optimi
 * Are sleep and perception of the day in general associated?
 * Does getting more sleep improve the perception of my day?
 * Does gettting less sleep improve the perception of my day?
-* Does sleeping earlier improve the perception of my day?
 
 To do this I'll need to first clean the data to make sure that the variables that I actually require are present in a proper and usable format.
 Then I'll need to make sure that the data is adequate and run the required statistical tests and document the results. Those results are the ones I'll be using in my blog post.
@@ -28,4 +27,3 @@ The names of the files disambiguate the order in which the files have to be run.
 Just to avoid confusion, I'll mention the order once again. 
 1. Run 01-data_cleaning.R
 2. Run 02-analysis.R
-3. Run 03-hypotheses.R
