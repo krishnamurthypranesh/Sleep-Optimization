@@ -1,0 +1,211 @@
+---
+title: "Data Cleaning"
+author: "Pranesh Krishnamurthy"
+date: "6 March 2018"
+output: html_document
+---
+
+```{r sesinfo, include=FALSE}
+sessionInfo()
+```
+
+This contains the RMarkdown for the sleep dataset. I'll capture my thoughts in this and later transfer this to Rscripts, which I'll host on github.com
+
+# Setup 
+
+```{r setup: libraries}
+# load libraries
+
+packages <- c("dplyr", "tidyr", "forcats", "magrittr", "lubridate")
+
+lapply(packages, library, character.only = T)
+```
+
+```{r setup:data}
+
+sleep <- read.csv("../../Data/my_sleep_data_raw1.csv", na.strings = "-", stringsAsFactors = FALSE)
+```
+
+# Data Quality Check
+
+This section is exclusively for checking the quality of the data
+
+```{r quality1: data structure}
+
+str(sleep)
+```
+
+I'll change the names of the variables to something a bit more readable.
+
+```{r quality3: names of variables}
+# names are too long and useless. So, I'll rename the variables
+
+names(sleep) <- c("sl.no", "date_expected_sleep", "day_expected_sleep", "time_expected_sleep", "date_actual_sleep", "day_actual_sleep", "time_actual_sleep", "date_wake_up", "day_wake_up", "time_expected_wake_up", "time_actual_wake_up", "duration_sleep", "feeling_15_min_wake_up", "perception_work_day", "perception_day_general")
+```
+
+I'll check if there are any missing values. Since I'll be repeating this process a couple of times, I'll create a function to do this for me everytime.
+
+```{r quality2: miss_calc}
+
+# function to check missing values
+
+miss_calc <- function(x) {
+  
+  stopifnot(!missing(x), (is.data.frame(x)|is.matrix(x)))
+  
+    miss_df <- data.frame(variables = names(x),
+                          missing_vals = vector("numeric", ncol(x)))
+  
+    miss_df$missing_vals <- vapply(x, function(x) sum(is.na(x)), FUN.VALUE = c(miss = 0))
+    
+    miss_df
+}
+
+# output of miss_clac
+
+miss_calc(sleep)
+```
+
+There are a few variables with a lot of missing values. These aren't useful for acheiving the objectives of this proj. So, I'll remove them.
+```{r quality4: location missingness}
+
+# sleep # no data from row 47. Delete all rows after row 47.
+```
+
+I'll check if there are missing values in this cleaned data. Since, we'll be going back to this again, I'll store it in a new data frame called "sleep_miss"
+
+```{r quality5: missingness again}
+
+# creating a new data frame to store the missing value info
+sleep_miss <- miss_calc(sleep) %>% mutate(prop_miss = missing_vals / nrow(sleep))
+```
+
+Feeling within 15 minutes of sleeping has 33 missing values. That's around 72%, so, I'll delete that entire column.
+
+```{r quality6: deleting miss col}
+
+sleep <- sleep %>% select(-starts_with("feeling"))
+```
+
+`time_expected_wake_up` is a time variable and is hard to impute. This variable does not contribute a lot to the hypotheses I want to test. Thus, removing the variable might be a better option than deleting those rows which have missing data. However, a closer look at the variable I'm interested in reveals that the first four rows are missing. So, I'll delete first four rows and retain the variable. 
+I can impute the missing values, but then I might end up producing a bias in the data. And, since I'm testing a hypothesis, I want to avoid that.
+
+```{r quality7: deleting another col}
+
+sleep <- sleep[-(1:4), ]
+```
+
+This leaves us with no missing values and 42 observations which are complete. 
+
+```{r quality8: removing the id var}
+
+sleep <- sleep %>% select(-sl.no)
+```
+
+The next step is to convert the date time objects and parse them correctly. This is where the "lubridate" package comes in.
+
+# Parsing data
+
+First off, I'll look at the structure of the data again.
+
+```{r parsing1}
+
+str(sleep)
+```
+
+Date times are really hard to handle and seeing that most of the variables in this dataset are date-time variables, this is going to be a great learning experience.
+
+To begin, the variable that catches my eye is the `duration_sleep` variable. It's supposed to be continuous, but, it's a character string. Time to tidy that
+
+```{r parsing2: duration_sleep}
+
+# sleep <- sleep %>% 
+#  separate(duration_sleep, c("hours", "unit1", "minutes", "unit2" ), sep = " ", remove = TRUE, convert = TRUE) %>% 
+#   select(-starts_with("unit")) %>% 
+#   mutate(minutes = ifelse(is.na(minutes), 00, minutes),
+#          hours = as.numeric(hours),
+#          minutes = as.numeric(minutes),
+#          total_sleep = (hours * 60) + minutes) 
+```
+
+Now, I have a variable that's on a continuous scale. This [sort of] allows me more freedom, as now I can run ANOVA's (or something similar) on the data.
+
+The next thing to do is to convert all the dates to dates. Time for lubridate to shine!!
+
+```{r parsing3: dates_expected}
+
+sleep %>% select(contains("date"))
+```
+
+There are three date variables. The thing with these variables is that the separator is surrounded by spaces. But, this is no problem. The dmy() helper from the lubridate package will take care of this. 
+```{r correcting date entry errors}
+
+sleep[44, 4] <-  "06-03-2018"
+
+sleep[52, 7] <- "15-03-2018"
+
+sleep[53, 7] <- "16-03-2018"
+```
+
+```{r parsing4: dates}
+
+sleep <- sleep %>%
+  mutate(date_expected_sleep = dmy(date_expected_sleep),
+         date_actual_sleep = dmy(date_actual_sleep),
+         date_wake_up = dmy(date_wake_up))
+```
+
+I mostly woke up on the next day. This doesn't hold good if I did slept after 00:00 hours though. The next logical step would be to take care of the day of expected sleep.  What I want to do is convert this to an ordered factor. This will be useful when I perform caluculations on the time, which is totally dependent on the day / date.
+
+```{r parsing5: days}
+
+# sleep <- sleep %>% 
+#   mutate(day_expected_sleep = wday(date_expected_sleep,label = TRUE),
+#          day_actual_sleep = wday(date_actual_sleep,label = TRUE),
+#          day_wake_up = wday(date_wake_up,label = TRUE))
+```
+
+```{r removing NA's in perception of day}
+
+sleep <- sleep[-which(is.na(sleep$perception_day_general), arr.ind = T), ]
+```
+
+The next thing is to parse the times properly. One way to do this, would be to convert the times to seconds passed since 00:00 hours on everyday. But, it would be so awesome if I could just keep it as a time variable. Let's see if this is possible. One way to do this would be to look at the days on which I slept and compare them to the days on which I was supposed to sleep. Then I could subtract the times based on how many hours and minutes my sleeping time was away from 00:00 hours.
+
+The next thing I want to do is focus on the perception variables. Perception of college working day is sort of fucked, because it's in different units and it's not possible to convert factors across scales (at least that's what I think). So, I'll remove that variable. The next one to focus on is the perception of the day in general. This is an ordinal with 5 levels as given in the meta-data file.
+
+```{r parsing6: perception}
+
+# sleep$perception_day_general <- factor(sleep$perception_day_general, levels = c(1, 2,3, 4, 5), ordered = TRUE)
+```
+
+Next would be to remove the perception about college day from the dataset. This variable can cause confusions. Although there are methods to get convert categorical variables, I won't get into the details, simply 'cuz I don't want to.
+
+```{r parsing7: college day}
+
+sleep <- sleep %>% select(-perception_work_day)
+```
+
+
+```{r check structure}
+
+str(sleep)
+```
+
+```{r}
+# check for missning-ness
+
+miss_calc(sleep)
+```
+
+There are no other missing values. I'll write the data to disk. #Peace
+
+# Writing data to disk
+
+As usual, I'll write the data to the derived folder
+
+```{r  writing data to disk}
+
+write.csv(sleep, "../../Derived/sleep_cleaned.csv")
+```
+
